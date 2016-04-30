@@ -399,24 +399,48 @@ void update_view_border(swayc_t *view) {
 	}
 }
 
+/**
+ * Recursively update window titles.
+ * Return true if any of the titles has changed.
+ */
+static bool update_title(swayc_t *container) {
+	bool updated = false;
+
+	if (container->type == C_CONTAINER) {
+		int i;
+		for (i = 0; i < container->children->length; ++i) {
+			swayc_t *child = container->children->items[i];
+			if (update_title(child)) {
+				updated = true;
+			}
+		}
+	} else if (container->type == C_VIEW) {
+		// update window title
+		const char *new_name = wlc_view_get_title(container->handle);
+
+		if (new_name) {
+			if (!container->name || strcmp(container->name, new_name) != 0) {
+				free(container->name);
+				container->name = strdup(new_name);
+				updated = true;
+			}
+		}
+	}
+
+	return updated;
+}
+
 void render_view_borders(wlc_handle view) {
 	swayc_t *c = swayc_by_handle(view);
 
-	if (!c || c->border_type == B_NONE) {
+	swayc_t *p = NULL;
+	if (!c || (!(c->parent->focused == c && (p = swayc_tabbed_stacked_parent(c))) &&
+			c->border_type == B_NONE)) {
 		return;
 	}
 
-	if (c->border_type == B_NORMAL) {
-		// update window title
-		const char *new_name = wlc_view_get_title(view);
-
-		if (new_name) {
-			if (!c->name || strcmp(c->name, new_name) != 0) {
-				free(c->name);
-				c->name = strdup(new_name);
-				update_view_border(c);
-			}
-		}
+	if ((p && update_title(p)) || (c->border_type == B_NORMAL && update_title(c))) {
+		update_view_border(c);
 	}
 
 	if (c->border && c->border->buffer) {
